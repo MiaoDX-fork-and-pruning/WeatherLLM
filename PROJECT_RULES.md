@@ -84,7 +84,20 @@ weather/
 
 ### weather-planner
 - 输出位置: `reports/analysis/project_plan.md`
+- 日志位置: `reports/analysis/project_log.md`
 - 更新位置: 各agent的输出
+
+### 项目日志维护（强制执行）
+- **维护者**: weather-planner
+- **更新频率**: 每次重要进展后更新
+- **日志内容**:
+  - 已完成工作
+  - 失败/问题记录
+  - 已确认事项
+  - 待人工处理事项
+  - 关键决策记录
+  - 下一步计划
+  - 风险和缓解措施
 
 ## Git版本控制规范（强制执行）
 
