@@ -93,6 +93,7 @@ weather/
 2. **所有变更必须通过Git管理**: 任何代码修改都必须commit
 3. **原子提交**: 每个commit只做一个逻辑完整的修改
 4. **有意义的commit message**: 清晰描述修改内容
+5. **验证后立即commit并push**: 每次验证完代码功能后，立即commit并push到远程仓库
 
 ### 分支策略
 ```
@@ -134,17 +135,46 @@ docs(research): add precipitation SOTA survey
 refactor(utils): simplify data loading utilities
 ```
 
-### 工作流程
+### 工作流程（强制执行）
 ```
 1. 编写/修改代码
        ↓
-2. 测试验证
+2. 测试验证（确保代码可运行）
        ↓
 3. git add <文件>
        ↓
-4. git commit -m "<type>(<scope>): <description>"
+4. git commit -m "<type>(<scope>): <详细描述>"
        ↓
-5. 如有需要: git push
+5. git push（立即推送到远程仓库）
+```
+
+### Commit Message详细格式
+```
+<type>(<scope>): <简短描述>
+
+<详细描述修改了什么，为什么这么修改，解决了什么问题>
+
+- 修改点1
+- 修改点2
+- 修改点3
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+示例:
+```
+feat(data): implement ERA5 preprocessing pipeline with spatial alignment
+
+实现ERA5数据预处理管道，包括：
+- 数据加载和格式转换
+- 空间配准到0.1°网格
+- 时间对齐到6小时步长
+- Z-score标准化处理
+- 缺失值时空插值修复
+
+该模块为PhyDiff-Net提供标准化的ERA5输入数据。
+
+Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 ### 禁止事项
@@ -152,6 +182,7 @@ refactor(utils): simplify data loading utilities
 - ❌ 直接在main分支上修改代码
 - ❌ 提交未测试的代码
 - ❌ 使用模糊的commit message（如 "update", "fix"）
+- ❌ commit后不push
 
 ## 文件命名规范
 

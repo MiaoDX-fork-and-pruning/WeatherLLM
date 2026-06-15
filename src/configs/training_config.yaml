@@ -1,0 +1,149 @@
+# ==============================================================================
+# PhyDiff-Net Training Configuration
+# ==============================================================================
+# Multi-stage progressive training configuration for precipitation forecasting
+# ==============================================================================
+
+# General training settings
+training:
+  batch_size: 16
+  learning_rate: 1e-4
+  weight_decay: 0.01
+  max_epochs: 400
+  warmup_epochs: 10
+  gradient_clip: 1.0
+
+  # Optimizer configuration
+  optimizer:
+    type: "adamw"
+    betas: [0.9, 0.999]
+    eps: 1e-8
+
+  # Learning rate scheduler
+  scheduler:
+    type: "cosine"
+    min_lr: 1e-6
+
+  # Multi-stage training configuration
+  stages:
+    pretrain:
+      epochs: 50
+      lr: 1e-4
+      description: "Stage 1: Learn general atmospheric representations from ERA5"
+      data: "era5"
+      loss_weights:
+        mse: 0.5
+        reconstruction: 0.5
+
+    fusion_pretrain:
+      epochs: 100
+      lr: 5e-5
+      description: "Stage 2: Learn ERA5-GMCP fusion representations"
+      data: "era5_gmcp"
+      loss_weights:
+        mse: 0.3
+        csi: 0.3
+        physics: 0.2
+        reconstruction: 0.2
+
+    finetune:
+      epochs: 200
+      lr: 1e-4
+      description: "Stage 3: Optimize precipitation forecasting performance"
+      data: "era5_gmcp"
+      loss_weights:
+        mse: 0.2
+        csi: 0.25
+        focal: 0.15
+        quantile: 0.1
+        physics: 0.1
+        extreme: 0.1
+        huber: 0.1
+
+    extreme_enhance:
+      epochs: 50
+      lr: 2e-4
+      description: "Stage 4: Enhance extreme event prediction capability"
+      data: "extreme_oversampled"
+      loss_weights:
+        mse: 0.15
+        csi: 0.2
+        extreme: 0.35
+        physics: 0.15
+        focal: 0.15
+
+  # Distributed training
+  distributed:
+    enabled: true
+    backend: "nccl"
+    find_unused_parameters: false
+
+  # Mixed precision training
+  mixed_precision:
+    enabled: true
+    dtype: "float16"
+    loss_scale: "dynamic"
+
+  # Checkpointing
+  checkpoint:
+    save_dir: "checkpoints"
+    save_every_n_epochs: 10
+    keep_last_n_checkpoints: 5
+    save_best_only: false
+
+  # Logging
+  logging:
+    log_dir: "logs"
+    log_every_n_steps: 50
+    tensorboard: true
+    wandb: false
+    wandb_project: "phydiff-net"
+
+  # Validation
+  validation:
+    validate_every_n_epochs: 5
+    early_stopping_patience: 30
+    monitor_metric: "val_extreme_csi"
+    mode: "max"
+
+  # Reproducibility
+  seed: 42
+  deterministic: true
+  benchmark: true
+
+# Model configuration (reference)
+model:
+  hidden_dim: 256
+  num_scales: 3
+  num_diffusion_steps: 1000
+  dropout_rate: 0.1
+
+# Data configuration (reference - see data_config.yaml for details)
+data:
+  input_resolution: 0.1
+  temporal_resolution: 6
+  input_sequence_length: 12
+  forecast_horizon: 4
+  crop_size: 128
+
+# Loss function weights for different stages
+loss:
+  mse_weight: 0.2
+  csi_weight: 0.25
+  focal_weight: 0.15
+  quantile_weight: 0.1
+  physics_weight: 0.1
+  extreme_weight: 0.1
+  huber_weight: 0.1
+
+  # CSI thresholds (mm/6h)
+  csi_thresholds: [0.1, 5.0, 10.0, 25.0, 50.0]
+
+  # Extreme event thresholds
+  extreme_thresholds:
+    heavy: 25.0
+    very_heavy: 50.0
+    extreme: 100.0
+
+  # Quantile loss quantiles
+  quantiles: [0.1, 0.5, 0.9]
