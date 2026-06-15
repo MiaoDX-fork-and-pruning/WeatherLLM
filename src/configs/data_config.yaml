@@ -1,0 +1,96 @@
+# ==============================================================================
+# Weather Prediction Data Configuration
+# ==============================================================================
+# ERA5-GMCP联合预训练数据管道配置
+# 适用于PhyDiff-Net降水预报模型
+# ==============================================================================
+
+# ERA5再分析数据配置
+era5:
+  path: "F:/ERA5再分析数据下载"
+  resolution: 0.25
+  variables:
+    - temperature
+    - u_wind
+    - v_wind
+    - geopotential
+    - relative_humidity
+    - surface_pressure
+    - total_precipitation
+
+# GMCP降水数据配置
+gmcp:
+  path: "F:/GMCP_Precipitation"
+  resolution: 0.1
+  variables:
+    - precipitation_rate
+
+# 预处理配置
+preprocessing:
+  target_resolution: 0.1
+  temporal_resolution: 6  # hours
+  train_period:
+    - "2000-01-01"
+    - "2019-12-31"
+  val_period:
+    - "2020-01-01"
+    - "2022-12-31"
+  test_period:
+    - "2023-01-01"
+    - "2024-12-31"
+
+  # ERA5归一化配置
+  normalization:
+    era5:
+      method: "zscore"
+      # 基于1979-2019气候态的统计参数
+      climate_period:
+        - "1979-01-01"
+        - "2019-12-31"
+    gmcp:
+      method: "log_minmax"
+    terrain:
+      method: "divide_by_max"
+
+  # 数据质量控制
+  quality_control:
+    missing_value_interpolation: true
+    anomaly_detection:
+      enabled: true
+      method: "physical_threshold"
+    time_alignment: 6  # hours
+
+# 数据集配置
+dataset:
+  input_sequence_length: 12  # 12 time steps = 72 hours
+  forecast_horizon: 4  # 4 time steps = 24 hours
+  crop_size: 128  # 128x128 grid points
+
+  # 数据增强
+  augmentation:
+    spatial_flip:
+      horizontal: true
+      vertical: true
+      probability: 0.5
+    spatial_rotation:
+      angles: [-90, -45, 0, 45, 90]
+      probability: 0.5
+    temporal_shift:
+      max_shift: 2
+      probability: 0.3
+    noise_injection:
+      gaussian_noise:
+        std: 0.01
+        probability: 0.2
+
+# 数据加载器配置
+dataloader:
+  batch_size: 16
+  num_workers: 8
+  pin_memory: true
+  persistent_workers: true
+  prefetch_factor: 2
+  distributed:
+    enabled: false
+    world_size: 1
+    rank: 0
