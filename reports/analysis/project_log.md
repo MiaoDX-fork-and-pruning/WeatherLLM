@@ -39,9 +39,19 @@
 - [x] 创建数据配置文件 (data_config.yaml)
 - [x] 创建训练配置文件 (training_config.yaml)
 - [x] 实现多尺度编码器 (encoder.py)
+- [x] 实现物理约束扩散模块 (diffusion.py)
+- [x] 实现极端事件感知分支 (extreme_branch.py)
+- [x] 实现时空异质性建模 (heterogeneity.py)
+- [x] 实现PhyDiff-Net主模型 (phydiff_net.py)
+- [x] 实现损失函数 (losses/)
+- [x] 实现评估指标 (evaluation/metrics.py)
+- [x] 实现可视化工具 (evaluation/visualization.py)
 - [x] 实现训练器类 (trainer.py)
-- [x] 实现工具函数 (config.py, logger.py, seed.py)
-- [x] 创建评估模块框架 (evaluation/)
+- [x] 实现训练脚本 (train.py)
+- [x] 实现推理脚本 (inference.py)
+- [x] 实现工具函数 (config.py, logger.py, seed.py, checkpoint.py, device.py)
+- [ ] 实现数据集类 (dataset.py) - 进行中
+- [ ] 实现数据加载器 (dataloader.py) - 进行中
 
 ---
 
