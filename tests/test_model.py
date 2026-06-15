@@ -15,7 +15,7 @@ def test_model_instantiation():
     print("Testing model instantiation...")
 
     config = load_config('src/configs/model_config.yaml')
-    model = PhyDiffNet(config)
+    model = PhyDiffNet(config["model"])
 
     print(f"Model created successfully!")
     print(f"Total parameters: {sum(p.numel() for p in model.parameters()):,}")
@@ -31,7 +31,7 @@ def test_forward_pass(model):
 
     # 创建模拟输入
     era5_data = torch.randn(batch_size, era5_channels, height, width)
-    gmcp_data = torch.randn(batch_size, 1, height * 2, width * 2)  # 0.1° vs 0.25°
+    gmcp_data = torch.randn(batch_size, 1, height, width)  # GMCP at same spatial resolution
 
     # 前向传播
     model.eval()

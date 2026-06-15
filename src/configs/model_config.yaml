@@ -3,19 +3,19 @@
 
 model:
   name: "PhyDiff-Net"
-  hidden_dim: 256
+  hidden_dim: 192
   num_scales: 3
   num_diffusion_steps: 1000
   dropout_rate: 0.1
 
   encoder:
     in_channels: 10  # ERA5 variable count
-    hidden_dim: 256
+    hidden_dim: 192
     num_heads: 8
     num_scales: 3
 
   diffusion:
-    hidden_dim: 256
+    hidden_dim: 192
     num_res_blocks: 4
     attention_resolutions: [16, 8]
     num_diffusion_steps: 1000
@@ -23,7 +23,7 @@ model:
     beta_end: 0.02
 
   extreme_branch:
-    hidden_dim: 256
+    hidden_dim: 192
     num_layers: 4
     thresholds: [25.0, 50.0, 100.0]
     weights:
@@ -32,10 +32,15 @@ model:
       extreme: 5.0
 
   heterogeneity:
-    hidden_dim: 256
+    hidden_dim: 192
     num_regions: 4
     num_frequencies: 8
     num_heads: 8
+
+  output:
+    hidden_dim: 192
+    output_channels: 1
+    forecast_horizon: 4
 
 training:
   batch_size: 16

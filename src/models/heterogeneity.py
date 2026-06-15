@@ -159,12 +159,16 @@ class SpatialHeterogeneity(nn.Module):
         )
 
         # Spatial attention for feature modulation
+        region_dim = hidden_dim // num_regions
         self.spatial_attention = nn.Sequential(
-            nn.Conv2d(hidden_dim, hidden_dim // 4, kernel_size=1),
+            nn.Conv2d(region_dim, region_dim // 4, kernel_size=1),
             nn.SiLU(),
-            nn.Conv2d(hidden_dim // 4, 1, kernel_size=1),
+            nn.Conv2d(region_dim // 4, 1, kernel_size=1),
             nn.Sigmoid(),
         )
+
+        # Output projection to restore full hidden_dim
+        self.output_proj = nn.Conv2d(region_dim, hidden_dim, kernel_size=1)
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
         """Model spatial heterogeneity.
@@ -198,6 +202,9 @@ class SpatialHeterogeneity(nn.Module):
 
         # Apply boundary smoothing
         heterogeneity_feature = self.boundary_smoothing(heterogeneity_feature)
+
+        # Project back to full hidden_dim
+        heterogeneity_feature = self.output_proj(heterogeneity_feature)
 
         return heterogeneity_feature
 

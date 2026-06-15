@@ -288,8 +288,11 @@ class MultiScaleEncoder(nn.Module):
         # Spatial attention
         spatial_feat = self.spatial_attention(temporal_feat)
 
-        # Cross-resolution fusion
-        fused_features = self.cross_resolution_fusion(spatial_feat, gmcp_data)
+        # Cross-resolution fusion (uses raw ERA5 data for resolution alignment)
+        cross_fused = self.cross_resolution_fusion(era5_data, gmcp_data)
+
+        # Combine processed features with cross-resolution features
+        fused_features = spatial_feat + cross_fused
 
         # Refinement
         refined = self.refinement(fused_features) + fused_features
@@ -476,6 +479,7 @@ class PhyDiffNet(nn.Module):
 
         # Feature fusion before output
         hidden_dim = encoder_config.get("hidden_dim", 256)
+        self.extreme_proj = nn.Conv2d(1, hidden_dim, kernel_size=1)
         self.feature_fusion = nn.Sequential(
             nn.Conv2d(hidden_dim * 3, hidden_dim, kernel_size=1),
             nn.GroupNorm(8, hidden_dim),
@@ -516,10 +520,11 @@ class PhyDiffNet(nn.Module):
         )
 
         # Fuse features from different branches
+        extreme_feat = self.extreme_proj(extreme_intensity)
         fused_features = torch.cat([
             encoded_features,
             heterogeneity_features,
-            extreme_intensity,
+            extreme_feat,
         ], dim=1)
         fused_features = self.feature_fusion(fused_features)
 
