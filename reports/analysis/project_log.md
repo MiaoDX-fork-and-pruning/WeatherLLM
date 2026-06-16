@@ -60,6 +60,9 @@
 - [x] 完成数据收集报告 (reports/research/data_collection_report.md)
 - [x] 创建ERA5下载脚本 (scripts/download_era5.py)
 - [x] 创建ERA5下载指南 (reports/research/era5_download_guide.md)
+- [x] 配置CDS API密钥
+- [x] 接受CDS数据集许可证
+- [x] 启动ERA5数据下载（2000-2005年）
 
 ---
 
@@ -171,8 +174,10 @@
 - [x] 完成数据收集报告
 - [x] 创建ERA5下载脚本
 - [x] 创建ERA5下载指南
-- [ ] 配置CDS API密钥
-- [ ] 下载ERA5数据
+- [x] 配置CDS API密钥
+- [x] 接受CDS数据集许可证
+- [x] 启动ERA5数据下载（2000-2005年）
+- [ ] 监控ERA5下载进度
 - [ ] 运行数据预处理
 - [ ] 运行模型小规模测试
 
