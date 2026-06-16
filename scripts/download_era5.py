@@ -42,12 +42,12 @@ except ImportError:
 
 # 默认配置
 DEFAULT_CONFIG = {
-    # 数据存储根目录
-    "base_dir": r"E:\ERA5",
+    # 数据存储根目录（必须在F盘）
+    "base_dir": r"F:\ERA5再分析数据下载",
 
-    # 时间范围
+    # 时间范围（按需下载，分阶段）
     "start_year": 2000,
-    "end_year": 2024,
+    "end_year": 2005,  # 阶段1：先下载2000-2005年
 
     # 空间范围 (全球)
     "area": "90/-180/-90/180",  # North/West/South/East
