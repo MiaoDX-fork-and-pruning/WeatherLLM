@@ -6,10 +6,14 @@ Supports single-GPU and distributed training with checkpoint resumption.
 
 import argparse
 import logging
+import sys
 from pathlib import Path
 from typing import Optional
 
 import torch
+
+# Ensure project root is on the path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +54,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--seed', type=int, default=42,
         help='Random seed for reproducibility'
+    )
+    parser.add_argument(
+        '--start_stage', type=str, default='pretrain',
+        choices=['pretrain', 'fusion_pretrain', 'finetune', 'extreme_enhance'],
+        help='Training stage to start from'
     )
     return parser.parse_args()
 
@@ -149,7 +158,7 @@ def main() -> None:
         logger.info(f"Resumed training from checkpoint: {args.resume}")
 
     # Run training
-    trainer.train()
+    trainer.train(start_stage=args.start_stage)
 
     # Clean up distributed training resources
     if args.distributed:

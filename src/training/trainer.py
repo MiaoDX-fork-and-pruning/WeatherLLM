@@ -310,7 +310,10 @@ class PhyDiffTrainer:
 
             # Forward pass with mixed precision
             with autocast(enabled=self.use_amp):
-                predictions = self.model(batch["input"])
+                # PhyDiffNet expects separate era5 and gmcp inputs
+                era5_data = batch.get("era5", batch.get("input"))
+                gmcp_data = batch.get("gmcp", batch.get("target"))
+                predictions = self.model(era5_data, gmcp_data)
                 losses = self.criterion(predictions, batch["target"], batch.get("metadata"))
 
             # Backward pass
@@ -364,7 +367,9 @@ class PhyDiffTrainer:
             batch = self._to_device(batch)
 
             with autocast(enabled=self.use_amp):
-                predictions = self.model(batch["input"])
+                era5_data = batch.get("era5", batch.get("input"))
+                gmcp_data = batch.get("gmcp", batch.get("target"))
+                predictions = self.model(era5_data, gmcp_data)
                 losses = self.criterion(predictions, batch["target"], batch.get("metadata"))
 
             for key, value in losses.items():
@@ -426,7 +431,8 @@ class PhyDiffTrainer:
                 )
 
                 # Validate
-                if self.state.epoch % self.config.get("validation", {}).get(
+                val_config = self.config.get("training", {}).get("validation", self.config.get("validation", {}))
+                if self.state.epoch % val_config.get(
                     "validate_every_n_epochs", 5
                 ) == 0:
                     val_losses = self.validate(self.state.epoch)
@@ -508,7 +514,7 @@ class PhyDiffTrainer:
         Returns:
             True if training should stop
         """
-        val_config = self.config.get("validation", {})
+        val_config = self.config.get("training", {}).get("validation", self.config.get("validation", {}))
         patience = val_config.get("early_stopping_patience", 30)
         monitor_metric = val_config.get("monitor_metric", "val_extreme_csi")
 

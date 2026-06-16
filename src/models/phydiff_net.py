@@ -515,8 +515,15 @@ class PhyDiffNet(nn.Module):
         heterogeneity_features = self.heterogeneity(encoded_features, timestamps)
 
         # Extreme event processing
+        # Downsample precipitation to match encoded feature spatial dims
+        precip_for_extreme = F.interpolate(
+            gmcp_data.mean(dim=1, keepdim=True),
+            size=(encoded_features.shape[2], encoded_features.shape[3]),
+            mode="bilinear",
+            align_corners=False,
+        )
         extreme_intensity, extreme_extent, extreme_masks = self.extreme_branch(
-            encoded_features, gmcp_data.mean(dim=1, keepdim=True)
+            encoded_features, precip_for_extreme
         )
 
         # Fuse features from different branches
@@ -592,8 +599,15 @@ class PhyDiffNet(nn.Module):
             )
 
         # Process with extreme branch
+        # Downsample precipitation to match encoded feature spatial dims
+        precip_for_extreme = F.interpolate(
+            precipitation,
+            size=(encoded_features.shape[2], encoded_features.shape[3]),
+            mode="bilinear",
+            align_corners=False,
+        ) if precipitation.shape[2:] != encoded_features.shape[2:] else precipitation
         extreme_intensity, extreme_extent, extreme_masks = self.extreme_branch(
-            encoded_features, precipitation
+            encoded_features, precip_for_extreme
         )
 
         return {
