@@ -178,6 +178,23 @@ class ERA5Downloader:
             try:
                 return func(*args, **kwargs)
             except Exception as e:
+                error_msg = str(e)
+
+                # 检查是否是许可证问题
+                if "required licences not accepted" in error_msg or "403" in error_msg:
+                    logger.error("=" * 60)
+                    logger.error("错误：CDS API许可证未接受！")
+                    logger.error("=" * 60)
+                    logger.error("请按以下步骤接受许可证：")
+                    logger.error("1. 访问 https://cds.climate.copernicus.eu")
+                    logger.error("2. 登录您的CDS账号")
+                    logger.error("3. 访问以下链接接受许可证：")
+                    logger.error("   - 压力层数据: https://cds.climate.copernicus.eu/datasets/reanalysis-era5-pressure-levels?tab=download#manage-licences")
+                    logger.error("   - 单层数据: https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=download#manage-licences")
+                    logger.error("4. 接受许可证后重新运行脚本")
+                    logger.error("=" * 60)
+                    raise
+
                 if attempt < max_retries - 1:
                     logger.warning(f"下载失败 (尝试 {attempt + 1}/{max_retries}): {e}")
                     logger.info(f"等待 {retry_delay} 秒后重试...")
