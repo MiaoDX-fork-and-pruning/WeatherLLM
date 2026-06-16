@@ -32,7 +32,11 @@ except ImportError:
 WB2_BASE_URL = "gs://weatherbench2/datasets/era5"
 
 # 推荐的数据集（13层，6小时，含派生变量）
-WB2_DATASET = "1959-2023_01_10-wb13-6h-1440x721_with_derived_variables.zarr"
+# 选择不同分辨率：
+# - 0.25°: "1959-2023_01_10-wb13-6h-1440x721_with_derived_variables.zarr" (数据量大，约50-100GB)
+# - 1.5°:  "1959-2023_01_10-6h-240x121_equiangular_with_poles_conservative.zarr" (推荐，数据量小)
+# - 5.6°:  "1959-2023_01_10-6h-64x32_equiangular_conservative.zarr" (最小)
+WB2_DATASET = "1959-2023_01_10-6h-240x121_equiangular_with_poles_conservative.zarr"
 
 # 我们需要的变量
 # 气压层变量
@@ -65,7 +69,7 @@ BASE_DIR = r"F:\WeatherBench2_ERA5"
 # ==================== 下载函数 ====================
 
 def download_year_range(start_year, end_year, base_dir, variables=None):
-    """下载指定年份范围的数据"""
+    """下载指定年份范围的数据（分年下载，避免内存不足）"""
     print("=" * 60)
     print("WeatherBench2 ERA5数据下载")
     print("=" * 60)
@@ -78,28 +82,25 @@ def download_year_range(start_year, end_year, base_dir, variables=None):
     os.makedirs(base_dir, exist_ok=True)
 
     # 连接GCS
-    print("\n[1/4] 连接Google Cloud Storage...")
+    print("\n[1/3] 连接Google Cloud Storage...")
     fs = gcsfs.GCSFileSystem(token="anon")
 
     # 打开Zarr数据集
-    print("[2/4] 打开Zarr数据集...")
+    print("[2/3] 打开Zarr数据集...")
     url = f"{WB2_BASE_URL}/{WB2_DATASET}"
     print(f"  URL: {url}")
 
     try:
-        # 使用xr.open_zarr打开远程数据
         ds = xr.open_zarr(fs.get_mapper(url), consolidated=True)
         print(f"  数据集维度: {dict(ds.dims)}")
         print(f"  变量数: {len(ds.data_vars)}")
     except Exception as e:
         print(f"  打开失败: {e}")
-        print("  尝试使用默认参数...")
-        ds = xr.open_zarr(fs.get_mapper(url))
+        return
 
     # 选择需要的变量
-    print("[3/4] 选择变量...")
+    print("[3/3] 选择变量...")
     if variables is None:
-        # 选择所有需要的变量
         available_vars = list(ds.data_vars)
         needed_vars = [v for v in PRESSURE_VARIABLES + SINGLE_LEVEL_VARIABLES
                       if v in available_vars]
@@ -110,7 +111,6 @@ def download_year_range(start_year, end_year, base_dir, variables=None):
         ds = ds[variables]
 
     # 选择气压层
-    print("  选择气压层...")
     if "level" in ds.dims:
         available_levels = ds.level.values
         print(f"  可用气压层: {available_levels}")
@@ -118,22 +118,28 @@ def download_year_range(start_year, end_year, base_dir, variables=None):
         print(f"  选择气压层: {target_levels_available}")
         ds = ds.sel(level=target_levels_available)
 
-    # 选择时间范围
-    print("[4/4] 选择时间范围...")
-    time_range = slice(f"{start_year}-01-01", f"{end_year}-12-31")
-    ds_subset = ds.sel(time=time_range)
-    print(f"  时间范围: {start_year}-01-01 至 {end_year}-12-31")
-    print(f"  时间步数: {len(ds_subset.time)}")
+    # 分年下载（避免内存不足）
+    print("\n开始分年下载...")
+    success_years = []
+    failed_years = []
 
-    # 分年保存
-    print("\n开始分年保存...")
     for year in range(start_year, end_year + 1):
+        print(f"\n{'='*40}")
+        print(f"下载 {year} 年数据...")
+        print(f"{'='*40}")
+
         # 选择该年的数据
-        year_data = ds_subset.sel(time=slice(f"{year}-01-01", f"{year}-12-31"))
+        year_start = f"{year}-01-01"
+        year_end = f"{year}-12-31"
+        year_data = ds.sel(time=slice(year_start, year_end))
 
         if len(year_data.time) == 0:
             print(f"  [{year}] 无数据，跳过")
+            failed_years.append(year)
             continue
+
+        print(f"  [{year}] 时间步数: {len(year_data.time)}")
+        print(f"  [{year}] 变量: {list(year_data.data_vars)}")
 
         # 保存为NetCDF格式
         output_file = os.path.join(base_dir, f"era5_{year}.nc")
@@ -144,18 +150,25 @@ def download_year_range(start_year, end_year, base_dir, variables=None):
             year_data.to_netcdf(output_file, format="NETCDF4")
             file_size = os.path.getsize(output_file) / (1024 * 1024)
             print(f"  [{year}] 完成! 文件大小: {file_size:.2f} MB")
+            success_years.append(year)
         except Exception as e:
-            print(f"  [{year}] 保存失败: {e}")
+            print(f"  [{year}] NetCDF保存失败: {e}")
             # 尝试保存为zarr格式
             zarr_file = os.path.join(base_dir, f"era5_{year}.zarr")
             try:
                 year_data.to_zarr(zarr_file, mode="w")
                 print(f"  [{year}] 保存为zarr格式: {zarr_file}")
+                success_years.append(year)
             except Exception as e2:
                 print(f"  [{year}] zarr保存也失败: {e2}")
+                failed_years.append(year)
 
+    # 总结
     print("\n" + "=" * 60)
     print("下载完成!")
+    print("=" * 60)
+    print(f"成功: {success_years}")
+    print(f"失败: {failed_years}")
     print("=" * 60)
 
 
