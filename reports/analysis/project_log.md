@@ -56,6 +56,8 @@
 - [x] 模型测试通过（502M参数，前向传播正常）
 - [x] 创建数据预处理脚本 (scripts/preprocess_data.py)
 - [x] 创建训练启动脚本 (scripts/run_training.py)
+- [x] 创建data-collector agent
+- [x] 完成数据收集报告 (reports/research/data_collection_report.md)
 
 ---
 
@@ -164,6 +166,9 @@
 - [x] 完成评估模块实现
 - [x] 创建数据预处理脚本
 - [x] 创建训练启动脚本
+- [x] 完成数据收集报告
+- [ ] 配置CDS API密钥
+- [ ] 下载ERA5数据
 - [ ] 运行数据预处理
 - [ ] 运行模型小规模测试
 
