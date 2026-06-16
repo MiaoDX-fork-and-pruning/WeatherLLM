@@ -57,6 +57,12 @@
 - [x] 制定拉齐策略：同时准备2018年和2019年两个评测集
 - [x] 更新ERA5下载脚本注释，明确需要下载2018-2019年
 - [x] 更新项目报告，说明评测集选择策略
+
+### 1.7 多Agent并行工作（第二轮）
+- [x] 数据收集agent：创建download_era5_eval.py评测数据下载脚本 (commit: 54955f8)
+- [x] 数据预处理agent：创建preprocess_era5.py预处理脚本 (commit: 0cbabff)
+- [x] 模型开发agent：修复bug，创建训练脚本和配置 (commit: e00e2b5)
+- [x] 评估agent：创建evaluate_benchmark.py和compare_sota.py (commit: 78c2f40)
 - [x] 实现推理脚本 (inference.py)
 - [x] 实现工具函数 (config.py, logger.py, seed.py, checkpoint.py, device.py)
 - [x] 实现数据集类 (dataset.py)
