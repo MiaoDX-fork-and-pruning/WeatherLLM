@@ -1,0 +1,34 @@
+{
+  "description": "ERA5 评测数据下载进度跟踪文件",
+  "comment": "此文件由 download_era5_eval.py 自动维护，请勿手动编辑",
+  "years": {
+    "2018": {
+      "pressure_level": {
+        "total": 366,
+        "completed": [],
+        "failed": [],
+        "skipped": []
+      },
+      "single_level": {
+        "total": 366,
+        "completed": [],
+        "failed": [],
+        "skipped": []
+      }
+    },
+    "2019": {
+      "pressure_level": {
+        "total": 365,
+        "completed": [],
+        "failed": [],
+        "skipped": []
+      },
+      "single_level": {
+        "total": 365,
+        "completed": [],
+        "failed": [],
+        "skipped": []
+      }
+    }
+  }
+}
