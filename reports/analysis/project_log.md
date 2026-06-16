@@ -58,6 +58,8 @@
 - [x] 创建训练启动脚本 (scripts/run_training.py)
 - [x] 创建data-collector agent
 - [x] 完成数据收集报告 (reports/research/data_collection_report.md)
+- [x] 创建ERA5下载脚本 (scripts/download_era5.py)
+- [x] 创建ERA5下载指南 (reports/research/era5_download_guide.md)
 
 ---
 
@@ -167,6 +169,8 @@
 - [x] 创建数据预处理脚本
 - [x] 创建训练启动脚本
 - [x] 完成数据收集报告
+- [x] 创建ERA5下载脚本
+- [x] 创建ERA5下载指南
 - [ ] 配置CDS API密钥
 - [ ] 下载ERA5数据
 - [ ] 运行数据预处理
