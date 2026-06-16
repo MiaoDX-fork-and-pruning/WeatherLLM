@@ -1,4 +1,31 @@
-data
-docs
-outputs
+# 数据目录（原始数据不提交）
+data/raw/
+data/processed/
+
+# 文档目录（论文PDF不提交）
+docs/*.pdf
+
+# 输出目录（运行时生成）
+outputs/
+
+# Python缓存
 __pycache__/
+*.pyc
+*.pyo
+
+# 模型检查点（太大不提交）
+models/checkpoints/
+models/final/
+
+# 虚拟环境
+venv/
+env/
+.venv/
+
+# IDE配置
+.vscode/
+.idea/
+
+# 临时文件
+*.tmp
+*.log
