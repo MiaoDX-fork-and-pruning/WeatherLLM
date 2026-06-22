@@ -1,0 +1,89 @@
+# ==============================================================================
+# WeatherBench2 Small-Scale Training Configuration
+# ==============================================================================
+# Configuration for testing PhyDiff-Net training pipeline with WeatherBench2
+# ERA5 data (1.5° resolution, 5 pressure levels).
+# ==============================================================================
+
+# ---- General training settings ----
+training:
+  batch_size: 2
+  learning_rate: 1.0e-4
+  weight_decay: 0.01
+  max_epochs: 5
+  warmup_epochs: 1
+  gradient_clip: 1.0
+
+  # Optimizer configuration
+  optimizer:
+    type: "adamw"
+    betas: [0.9, 0.999]
+    eps: 1.0e-8
+
+  # Learning rate scheduler
+  scheduler:
+    type: "cosine_with_warmup"
+    min_lr: 1.0e-6
+
+  # Mixed precision training
+  mixed_precision:
+    enabled: false  # Disable for small-scale test
+
+  # Logging
+  logging:
+    log_dir: "logs/weatherbench2_test"
+    log_every_n_steps: 5
+    tensorboard: false
+
+  # Validation
+  validation:
+    validate_every_n_epochs: 1
+    early_stopping_patience: 10
+    monitor_metric: "val_loss"
+    mode: "min"
+
+  # Reproducibility
+  seed: 42
+  deterministic: true
+
+  # Checkpoint
+  checkpoint:
+    save_dir: "checkpoints/weatherbench2_test"
+    save_every_n_epochs: 2
+    keep_last_n_checkpoints: 3
+
+# ---- Model configuration ----
+model:
+  # Input: 6 ERA5 variables x 5 pressure levels = 30 channels
+  # Spatial: 121 (lat) x 240 (lon) at 1.5° resolution
+  # Output: 4 precipitation forecast timesteps
+  in_channels: 30        # 6 variables * 5 levels
+  out_channels: 4        # forecast_horizon timesteps
+  hidden_channels: 64    # Small for testing
+  encoder_layers: 2
+  decoder_layers: 2
+
+# ---- Data configuration ----
+data:
+  data_path: "F:/WeatherBench2_ERA5/era5_2018-2019.nc"
+  input_variables:
+    - "u_component_of_wind"
+    - "v_component_of_wind"
+    - "geopotential"
+    - "temperature"
+    - "specific_humidity"
+    - "vertical_velocity"
+  target_variable: "total_precipitation_6hr"
+  pressure_levels: [1000, 850, 500, 200, 100]
+  input_timesteps: 4
+  forecast_horizon: 4
+  # Use January 2018 for small-scale test
+  time_start: "2018-01-01"
+  time_end: "2018-01-31"
+  normalize: true
+  val_split: 0.2
+
+# ---- Loss function configuration ----
+loss:
+  mse_weight: 1.0
+  mae_weight: 0.0  # Can enable for robustness
