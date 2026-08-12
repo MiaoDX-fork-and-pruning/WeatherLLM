@@ -29,6 +29,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.data.gmcp_sequence_dataset import create_gmcp_dataloaders
+from src.models.losses.gmcp_extreme_loss import GMCPExtremeLoss
 from src.models.phydiff_net import PhyDiffNet
 from src.utils.config import load_config
 from src.utils.seed import set_seed
@@ -93,6 +94,12 @@ def parse_args() -> argparse.Namespace:
         "--verify_only",
         action="store_true",
         help="Run forward/backward verification and exit.",
+    )
+    parser.add_argument(
+        "--use_extreme_loss",
+        action="store_true",
+        help="Use GMCPExtremeLoss (normalized MSE + physical CSI/extreme "
+        "weighting) instead of the plain MSE+MAE loss.",
     )
     return parser.parse_args()
 
@@ -256,10 +263,29 @@ def main() -> None:
         "Model parameters: total=%d, trainable=%d", total_params, trainable_params
     )
 
-    criterion = GMCPLoss(
-        mse_weight=training_config.get("mse_weight", 1.0),
-        mae_weight=training_config.get("mae_weight", 0.5),
-    )
+    if args.use_extreme_loss:
+        # Pull normalization stats from the training dataset so the loss can
+        # denormalize predictions back to physical mm/6h for threshold-based
+        # CSI and extreme-event weighting.
+        train_ds = train_loader.dataset
+        criterion = GMCPExtremeLoss(
+            norm_min=getattr(train_ds, "input_min", None),
+            norm_max=getattr(train_ds, "input_max", None),
+            normalize=data_config.get("normalize", "log_minmax"),
+            mse_weight=training_config.get("mse_weight", 1.0),
+            mae_weight=training_config.get("mae_weight", 0.5),
+            csi_weight=training_config.get("csi_weight", 0.5),
+            extreme_weight=training_config.get("extreme_weight", 1.0),
+        )
+        logger.info(
+            "Using GMCPExtremeLoss: norm_min=%.4f, norm_max=%.4f",
+            criterion.norm_min.item(), criterion.norm_max.item(),
+        )
+    else:
+        criterion = GMCPLoss(
+            mse_weight=training_config.get("mse_weight", 1.0),
+            mae_weight=training_config.get("mae_weight", 0.5),
+        )
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=learning_rate,
