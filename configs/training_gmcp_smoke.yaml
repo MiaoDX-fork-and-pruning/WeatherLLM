@@ -1,0 +1,73 @@
+# GMCP-only smoke test config using preprocessed 6h data (year 2000).
+# Small model + small date range to verify end-to-end training in minutes.
+
+model:
+  name: "PhyDiff-Net-GMCP-Smoke"
+  use_era5: false
+  hidden_dim: 64
+  num_scales: 3
+  num_diffusion_steps: 1000
+  dropout_rate: 0.1
+  encoder_spatial_size: [64, 64]
+
+  encoder:
+    in_channels: 19
+    gmcp_channels: 12
+    hidden_dim: 64
+    num_heads: 4
+    num_scales: 2
+
+  diffusion:
+    hidden_dim: 64
+    num_res_blocks: 2
+    attention_resolutions: [16, 8]
+    num_diffusion_steps: 1000
+    beta_start: 0.0001
+    beta_end: 0.02
+
+  extreme_branch:
+    hidden_dim: 64
+    num_layers: 2
+    thresholds: [25.0, 50.0, 100.0]
+
+  heterogeneity:
+    hidden_dim: 64
+    num_regions: 4
+    num_frequencies: 4
+    num_heads: 4
+
+  output:
+    hidden_dim: 64
+    output_channels: 1
+    forecast_horizon: 4
+
+training:
+  batch_size: 1
+  learning_rate: 1.0e-4
+  weight_decay: 0.01
+  max_epochs: 1
+  min_lr: 1.0e-6
+  gradient_clip: 1.0
+  num_workers: 0
+  gpu_id: 0
+  seed: 42
+  output_dir: "outputs/gmcp_smoke"
+  mse_weight: 1.0
+  mae_weight: 0.5
+
+data:
+  data_path: "F:/GMCP_Precipitation_6h"
+  use_preprocessed: true
+  input_timesteps: 12
+  forecast_horizon: 4
+  normalize: "log_minmax"
+  splits:
+    train:
+      start_date: "2000-06-01"
+      end_date: "2000-06-30"
+    val:
+      start_date: "2000-07-01"
+      end_date: "2000-07-15"
+    test:
+      start_date: "2000-07-16"
+      end_date: "2000-07-31"

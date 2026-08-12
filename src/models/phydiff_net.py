@@ -545,20 +545,31 @@ class PhyDiffNet(nn.Module):
     ) -> tuple[torch.Tensor, tuple[int, int]]:
         """Downsample GMCP to encoder spatial size if configured.
 
+        Handles both 4D ``[B, C, H, W]`` and 5D ``[B, T, C, H, W]`` inputs by
+        collapsing leading dims into the batch axis for the interpolate call.
+
         Returns:
-            Tuple of (resized GMCP, original spatial size).
+            Tuple of (resized GMCP, original spatial size ``(H, W)``).
         """
-        original_size = gmcp_data.shape[2:]
+        original_size = (gmcp_data.shape[-2], gmcp_data.shape[-1])
         if self.encoder_spatial_size is None:
             return gmcp_data, original_size
         if original_size == self.encoder_spatial_size:
             return gmcp_data, original_size
+
+        lead_shape = gmcp_data.shape[:-2]
+        # Collapse all leading dims into one batch axis: [..., H, W] -> [N, H, W].
+        flat = gmcp_data.reshape(-1, *original_size)
+        # interpolate needs a channel dim: [N, 1, H, W].
+        flat = flat.unsqueeze(1)
         resized = F.interpolate(
-            gmcp_data,
+            flat,
             size=self.encoder_spatial_size,
             mode="bilinear",
             align_corners=False,
         )
+        # Squeeze the channel dim and restore leading dims.
+        resized = resized.squeeze(1).reshape(*lead_shape, *self.encoder_spatial_size)
         return resized, original_size
 
     def _maybe_upsample_predictions(
@@ -611,6 +622,11 @@ class PhyDiffNet(nn.Module):
         """
         if gmcp_data is None:
             raise ValueError("gmcp_data is required for both use_era5=True and use_era5=False")
+
+        # Dataset returns GMCP as [B, T_in, 1, H, W]; collapse the singleton
+        # channel dim so T_in acts as the channel axis: [B, T_in, H, W].
+        if gmcp_data.dim() == 5 and gmcp_data.shape[2] == 1:
+            gmcp_data = gmcp_data.squeeze(2)
 
         gmcp_resized, original_size = self._maybe_resize_gmcp(gmcp_data)
 
@@ -681,6 +697,11 @@ class PhyDiffNet(nn.Module):
         """
         if gmcp_data is None:
             raise ValueError("gmcp_data is required for both use_era5=True and use_era5=False")
+
+        # Dataset returns GMCP as [B, T_in, 1, H, W]; collapse the singleton
+        # channel dim so T_in acts as the channel axis: [B, T_in, H, W].
+        if gmcp_data.dim() == 5 and gmcp_data.shape[2] == 1:
+            gmcp_data = gmcp_data.squeeze(2)
 
         gmcp_resized, original_size = self._maybe_resize_gmcp(gmcp_data)
         B = gmcp_resized.shape[0]
