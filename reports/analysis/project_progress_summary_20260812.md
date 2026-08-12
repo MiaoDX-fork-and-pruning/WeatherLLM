@@ -2,7 +2,7 @@
 
 **项目名称**: PhyDiff-Net 降水预报 AI 模型
 **总结日期**: 2026-08-12
-**Git 状态**: 已同步至 origin/main（commit `1a583a6`）
+**Git 状态**: 已同步至 origin/main（commit `a318c14`）
 **维护者**: weather-planner
 
 ---
@@ -35,8 +35,10 @@
 | 模型代码实现 | ✅ 完成 | 100% |
 | GMCP 真实数据管道打通 | ✅ 完成 | 100% |
 | GMCP-only baseline 训练通路 | ✅ 完成 | 100% |
+| 6h 标签数据批量生成 | 🔄 进行中（2000 完成，2001-2024 后台生成） | ~5% |
+| GMCP-only 端到端训练验证 | ✅ 完成（冒烟通过） | 100% |
 | ERA5 数据下载 | 🔄 进行中（瓶颈） | ~55% |
-| 模型训练与调优 | ⏳ 待启动 | 0% |
+| 模型正式训练与调优 | ⏳ 待启动（待全量标签） | 0% |
 | 评估对比 SOTA | ⏳ 待启动 | 0% |
 
 ---
@@ -89,6 +91,34 @@
 
 同时以 WeatherBench2 1.5° 数据作为快速原型通路。
 
+### 3.6 预处理性能突破与端到端训练验证（2026-08-12）
+
+**瓶颈诊断**：原 `preprocess_gmcp_6h.py` 单月耗时 787 秒，25 年需 ~65 小时。根因是 xarray 逐文件 `open_dataset` + `load()` 的元数据开销（~1 秒/文件）。
+
+**优化方案**（`scripts/preprocess_gmcp_6h_fast.py`）：改用 netCDF4 直接读取中国区域切片，预计算固定索引，绕过 xarray 元数据开销。
+
+| 指标 | 原方案 | 优化后 | 提升 |
+|------|--------|--------|------|
+| 单月耗时 | 787 秒 | 38 秒 | 20× |
+| 全年耗时 | ~2.6 小时 | 7 分钟 | 22× |
+| 单文件读取 | ~1 秒 | 0.015 秒 | 66× |
+
+2000 年输出验证：1464 个 6h 窗口（闰年正确），mean 0.59mm/6h（与分析报告一致）。
+
+**模型 5D 输入修复**：
+- `_maybe_resize_gmcp`：修复 5D 输入 `[B, T_in, 1, H, W]` 下采样时 `F.interpolate` 维度错配
+- `forward/sample`：GMCP-only 模式下 squeeze 单例 channel 维，使 T_in 作为 channel 轴进入 conv2d
+
+**端到端训练冒烟验证通过**（`configs/training_gmcp_smoke.yaml`）：
+- 2000 年 6-7 月数据，hidden_dim=64，1 epoch，GPU RTX 2060
+- train_loss 0.0654 → 0.0445，val_loss 0.0400
+- checkpoint 落盘 `outputs/gmcp_smoke/best_model.pt`
+- **数据加载 → 前向 → 反向 → 验证 → 存盘全链路打通**
+
+### 3.7 6h 标签全量生成（进行中）
+
+2001-2024 年数据后台生成中（每月 ~30 秒，预计 2.5 小时完成）。完成后即可用 `training_gmcp_only.yaml` 启动正式小规模训练。
+
 ---
 
 ## 四、当前瓶颈与风险
@@ -115,17 +145,15 @@
 
 ### 5.1 P0 — 立即执行（本周）
 
-1. **生成 6h 累计标签数据**
-   - 运行 `python scripts/preprocess_gmcp_6h.py --start-year 2000 --end-year 2024`
-   - 产出 `F:/GMCP_Precipitation_6h/gmcp_6h_YYYY.nc`，为训练供数。
-   - 注意按块处理避免内存峰值（见兼容性修复报告 §5.2）。
+1. **生成 6h 累计标签数据** ✅ 进行中
+   - 2000 年已完成；2001-2024 后台生成中（`preprocess_gmcp_6h_fast.py`，预计 2.5h）。
+   - 产出 `F:/GMCP_Precipitation_6h/gmcp_6h_YYYY.nc`。
 
-2. **GMCP-only 端到端训练冒烟验证**
-   - 先用 `training_gmcp_only_verify.yaml`（小日期范围、hidden_dim=64）跑 1 epoch，确认 loss 下降、checkpoint 落盘。
-   - 命令：`python scripts/train_gmcp_only.py --config configs/training_gmcp_only_verify.yaml --verify_only` → 再去掉 `--verify_only` 跑完整 1 epoch。
+2. **GMCP-only 端到端训练冒烟验证** ✅ 完成
+   - `training_gmcp_smoke.yaml` 1 epoch 通过，loss 下降，checkpoint 落盘。
 
-3. **GMCP-only 正式小规模训练**
-   - 在验证通过后，用 `training_gmcp_only.yaml` 跑 5 epoch（先单年或小子集，确认收敛趋势）。
+3. **GMCP-only 正式小规模训练** ⏳ 待全量标签完成
+   - 全量 6h 标签就绪后，用 `training_gmcp_only.yaml` 跑 5 epoch，确认多 epoch 收敛趋势。
 
 ### 5.2 P1 — 短期推进（本月）
 
@@ -167,6 +195,8 @@
 | `70b3842` | feat(data) | GMCP reader 与真实数据兼容性修复 |
 | `cea52ab` | feat(model) | PhyDiff-Net GMCP-only 训练模式与管道 |
 | `1a583a6` | feat(data) | ERA5 并行/优化下载脚本与进度记录 |
+| `44e1994` | docs | 项目进展总结与日志更新 |
+| `a318c14` | perf(data) | 极速预处理脚本（快 20 倍）+ 5D 输入修复 + 冒烟验证 |
 
 所有提交已 push 至 `origin/main`。工作区干净，无未提交改动。
 
