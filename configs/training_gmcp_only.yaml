@@ -1,0 +1,84 @@
+# GMCP-only PhyDiff-Net training configuration
+
+model:
+  name: "PhyDiff-Net-GMCP-Only"
+  use_era5: false  # GMCP-only mode
+  hidden_dim: 192
+  num_scales: 3
+  num_diffusion_steps: 1000
+  dropout_rate: 0.1
+
+  # Downsample high-resolution GMCP (360x620) to this resolution for the
+  # encoder, heterogeneity, and extreme branch. Predictions are upsampled
+  # back to the original GMCP size at the output.
+  encoder_spatial_size: [64, 64]
+
+  encoder:
+    in_channels: 19       # ERA5 channels (unused when use_era5=false)
+    gmcp_channels: 12     # Number of input GMCP time steps (T_in)
+    hidden_dim: 192
+    num_heads: 8
+    num_scales: 3
+
+  diffusion:
+    hidden_dim: 192
+    num_res_blocks: 4
+    attention_resolutions: [16, 8]
+    num_diffusion_steps: 1000
+    beta_start: 0.0001
+    beta_end: 0.02
+
+  extreme_branch:
+    hidden_dim: 192
+    num_layers: 4
+    thresholds: [25.0, 50.0, 100.0]
+
+  heterogeneity:
+    hidden_dim: 192
+    num_regions: 4
+    num_frequencies: 8
+    num_heads: 8
+
+  output:
+    hidden_dim: 192
+    output_channels: 1
+    forecast_horizon: 4
+
+training:
+  batch_size: 1
+  learning_rate: 1.0e-4
+  weight_decay: 0.01
+  max_epochs: 5
+  min_lr: 1.0e-6
+  gradient_clip: 1.0
+  num_workers: 0
+  gpu_id: 0
+  seed: 42
+  output_dir: "outputs/gmcp_only"
+  mse_weight: 1.0
+  mae_weight: 0.5
+
+data:
+  # Path to preprocessed 6-hourly NetCDF files (gmcp_6h_YYYY.nc).
+  # Set use_preprocessed=false to load directly from hourly GMCP files.
+  data_path: "F:/GMCP_Precipitation_6h"
+  use_preprocessed: true
+
+  # Input/output sequence lengths
+  input_timesteps: 12      # 72 hours of history
+  forecast_horizon: 4      # 24 hours forecast (4 x 6h)
+
+  # Normalization: "log_minmax", "zscore", or null
+  normalize: "log_minmax"
+
+  # Train/val/test split by year
+  splits:
+    train:
+      start_date: "2000-01-01"
+      end_date: "2020-12-31"
+    val:
+      start_date: "2021-01-01"
+      end_date: "2022-12-31"
+    test:
+      start_date: "2023-01-01"
+      end_date: "2024-12-31"

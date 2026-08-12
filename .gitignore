@@ -16,6 +16,7 @@ __pycache__/
 # 模型检查点（太大不提交）
 models/checkpoints/
 models/final/
+checkpoints/
 
 # 虚拟环境
 venv/

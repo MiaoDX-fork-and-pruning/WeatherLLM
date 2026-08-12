@@ -7,9 +7,11 @@ model:
   num_scales: 3
   num_diffusion_steps: 1000
   dropout_rate: 0.1
+  use_era5: true  # Set to false for GMCP-only training
 
   encoder:
     in_channels: 10  # ERA5 variable count
+    gmcp_channels: 1  # GMCP channel count
     hidden_dim: 192
     num_heads: 8
     num_scales: 3

@@ -224,6 +224,7 @@ class UNet(nn.Module):
     ):
         super().__init__()
         self.hidden_channels = hidden_channels
+        self.channel_mults = channel_mults
         time_dim = hidden_channels * 4
 
         # Time embedding
@@ -240,6 +241,7 @@ class UNet(nn.Module):
         # Encoder
         self.encoder_blocks = nn.ModuleList()
         self.downsamplers = nn.ModuleList()
+        self.skip_channels: List[int] = []
         current_channels = hidden_channels
         current_res = 128  # Assume initial resolution
 
@@ -257,6 +259,9 @@ class UNet(nn.Module):
                     level_blocks.append(AttentionBlock(out_channels_level, num_heads, dropout))
                 current_channels = out_channels_level
 
+            # Save encoder-level output as skip connection; downsampler outputs
+            # are intermediate features and should not be popped by the decoder.
+            self.skip_channels.append(current_channels)
             self.encoder_blocks.append(level_blocks)
             if level < len(channel_mults) - 1:
                 self.downsamplers.append(Downsample(current_channels))
@@ -273,14 +278,29 @@ class UNet(nn.Module):
         self.decoder_blocks = nn.ModuleList()
         self.upsamplers = nn.ModuleList()
 
-        for level, mult in enumerate(reversed(channel_mults)):
+        reversed_mults = list(reversed(channel_mults))
+        for level, mult in enumerate(reversed_mults):
             out_channels_level = hidden_channels * mult
+            skip_channels = self.skip_channels.pop()
             level_blocks = nn.ModuleList()
 
-            for _ in range(num_res_blocks):
+            # First block consumes the concatenated upsampled feature and skip.
+            level_blocks.append(
+                ResidualBlock(
+                    current_channels + skip_channels,
+                    out_channels_level,
+                    time_dim,
+                    dropout,
+                )
+            )
+            if current_res in attention_resolutions:
+                level_blocks.append(AttentionBlock(out_channels_level, num_heads, dropout))
+            current_channels = out_channels_level
+
+            for _ in range(num_res_blocks - 1):
                 level_blocks.append(
                     ResidualBlock(
-                        current_channels + out_channels_level,
+                        current_channels,
                         out_channels_level,
                         time_dim,
                         dropout,
@@ -291,7 +311,7 @@ class UNet(nn.Module):
                 current_channels = out_channels_level
 
             self.decoder_blocks.append(level_blocks)
-            if level < len(channel_mults) - 1:
+            if level < len(reversed_mults) - 1:
                 self.upsamplers.append(Upsample(current_channels))
                 current_res *= 2
 
@@ -325,19 +345,20 @@ class UNet(nn.Module):
         h = self.input_conv(h)
 
         # Encoder with skip connections
-        skips = []
-        for level_blocks in self.encoder_blocks:
+        skips: List[torch.Tensor] = []
+        for level_blocks, downsampler in zip(
+            self.encoder_blocks,
+            list(self.downsamplers) + [None],
+        ):
             for block in level_blocks:
                 if isinstance(block, ResidualBlock):
                     h = block(h, t_emb)
                 else:
                     h = block(h)
+            # Save encoder-level feature for the decoder skip connection.
             skips.append(h)
-
-        # Downsample
-        for downsampler in self.downsamplers:
-            h = downsampler(h)
-            skips.append(h)
+            if downsampler is not None:
+                h = downsampler(h)
 
         # Bottleneck
         for block in self.bottleneck:
@@ -347,22 +368,12 @@ class UNet(nn.Module):
                 h = h + block(h)
 
         # Decoder with skip connections
-        for level_blocks, upsampler in zip(self.decoder_blocks, self.upsamplers):
-            h = upsampler(h)
+        for level_idx, level_blocks in enumerate(self.decoder_blocks):
+            if level_idx > 0:
+                h = self.upsamplers[level_idx - 1](h)
             skip = skips.pop()
             h = torch.cat([h, skip], dim=1)
 
-            for block in level_blocks:
-                if isinstance(block, ResidualBlock):
-                    h = block(h, t_emb)
-                else:
-                    h = block(h)
-
-        # Handle remaining skip connections
-        for level_blocks in self.decoder_blocks[len(self.upsamplers):]:
-            if skips:
-                skip = skips.pop()
-                h = torch.cat([h, skip], dim=1)
             for block in level_blocks:
                 if isinstance(block, ResidualBlock):
                     h = block(h, t_emb)
@@ -547,6 +558,9 @@ class EnergyConstraint(nn.Module):
         # Smoothness constraint (penalize extreme gradients)
         grad_x = precipitation[:, :, :, 1:] - precipitation[:, :, :, :-1]
         grad_y = precipitation[:, :, 1:, :] - precipitation[:, :, :-1, :]
+        # Pad gradients so they have the same spatial size before combining.
+        grad_x = F.pad(grad_x, (0, 1, 0, 0))
+        grad_y = F.pad(grad_y, (0, 0, 0, 1))
         smoothness_loss = (grad_x ** 2 + grad_y ** 2).mean()
 
         constraint_loss = smoothness_loss
@@ -621,31 +635,37 @@ class PhysicsConstraintModule(nn.Module):
 
 
 class ConditionEncoder(nn.Module):
-    """Condition encoder for encoding ERA5 atmospheric data.
+    """Condition encoder for encoding atmospheric conditions.
 
-    This module encodes the conditioning information (ERA5 data)
-    into a format suitable for the U-Net denoiser.
+    This module encodes the conditioning information (e.g. ERA5 data or
+    encoded features) into a format suitable for the U-Net denoiser.
 
     Args:
+        in_channels: Number of input channels.
         hidden_dim: Output hidden dimension.
         num_layers: Number of encoding layers.
     """
 
-    def __init__(self, hidden_dim: int = 256, num_layers: int = 4):
+    def __init__(
+        self,
+        in_channels: int = 19,
+        hidden_dim: int = 256,
+        num_layers: int = 4,
+    ):
         super().__init__()
         self.hidden_dim = hidden_dim
 
         # Progressive downsampling
         layers = []
-        in_channels = 19  # ERA5 typical channel count
+        current_channels = in_channels
         for i in range(num_layers):
             out_channels = hidden_dim if i == num_layers - 1 else hidden_dim // (2 ** (num_layers - 1 - i))
             layers.extend([
-                nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1),
+                nn.Conv2d(current_channels, out_channels, kernel_size=3, stride=2, padding=1),
                 nn.GroupNorm(8, out_channels),
                 nn.SiLU(),
             ])
-            in_channels = out_channels
+            current_channels = out_channels
 
         self.encoder = nn.Sequential(*layers)
 
@@ -659,7 +679,7 @@ class ConditionEncoder(nn.Module):
         """Encode conditioning data.
 
         Args:
-            condition: Atmospheric condition [B, C_era5, H, W].
+            condition: Condition tensor [B, C, H, W].
 
         Returns:
             Encoded features [B, hidden_dim, H', W'].
@@ -698,6 +718,7 @@ class PhysicsConstrainedDiffusion(nn.Module):
         hidden_dim: int = 256,
         num_diffusion_steps: int = 1000,
         dropout: float = 0.1,
+        condition_channels: Optional[int] = None,
     ):
         super().__init__()
         self.num_steps = num_diffusion_steps
@@ -725,7 +746,10 @@ class PhysicsConstrainedDiffusion(nn.Module):
         )
 
         # Condition encoder
-        self.condition_encoder = ConditionEncoder(hidden_dim)
+        self.condition_encoder = ConditionEncoder(
+            in_channels=condition_channels if condition_channels is not None else hidden_dim,
+            hidden_dim=hidden_dim,
+        )
 
     def _setup_diffusion_params(self) -> None:
         """Setup diffusion schedule parameters."""
