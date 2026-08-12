@@ -26,6 +26,8 @@ import pandas as pd
 from scipy.interpolate import interp2d
 from scipy.ndimage import gaussian_filter
 
+from src.data.gmcp_reader import GMCPDataset
+
 logger = logging.getLogger(__name__)
 
 
@@ -380,12 +382,15 @@ class GMCPPreprocessor:
     ) -> xr.Dataset:
         """加载指定时间范围的GMCP数据。
 
+        适配真实GMCP文件布局：按小时存储为 ``GMCP_YYYY_MM_DD_HH.nc``，
+        变量名为 ``rain_rate``，坐标为 ``lat``/``lon``。
+
         Args:
             start_date: 开始日期，格式'YYYY-MM-DD'。
             end_date: 结束日期，格式'YYYY-MM-DD'。
 
         Returns:
-            包含GMCP降水变量的xarray Dataset。
+            包含GMCP降水变量 ``precipitation_rate`` 的 xarray Dataset。
 
         Raises:
             FileNotFoundError: 当数据文件不存在时。
@@ -394,51 +399,21 @@ class GMCPPreprocessor:
             "Loading GMCP data from %s to %s", start_date, end_date
         )
 
-        start = datetime.strptime(start_date, "%Y-%m-%d")
-        end = datetime.strptime(end_date, "%Y-%m-%d")
-
-        # 收集所有时间步的数据文件
-        datasets = []
-        current = start
-        while current <= end:
-            year = current.year
-            month = current.month
-
-            # 构造文件路径
-            file_path = self.data_path / f"gmcp_{year}_{month:02d}.nc"
-            if file_path.exists():
-                ds = xr.open_dataset(str(file_path))
-                # 筛选时间范围和空间范围
-                ds = ds.sel(
-                    time=slice(
-                        current.strftime("%Y-%m-%d"),
-                        end.strftime("%Y-%m-%d"),
-                    ),
-                    latitude=slice(self.lat_max, self.lat_min),
-                    longitude=slice(self.lon_min, self.lon_max),
-                )
-                datasets.append(ds)
-
-            # 移动到下个月
-            if month == 12:
-                current = current.replace(year=year + 1, month=1)
-            else:
-                current = current.replace(month=month + 1)
-
-        if not datasets:
-            raise FileNotFoundError(
-                f"No GMCP data files found for period {start_date} to {end_date}"
-            )
-
-        # 合并所有数据
-        merged = xr.concat(datasets, dim="time")
+        dataset = GMCPDataset(
+            data_path=self.data_path,
+            region={
+                "lat_min": self.lat_min,
+                "lat_max": self.lat_max,
+                "lon_min": self.lon_min,
+                "lon_max": self.lon_max,
+            },
+        )
+        merged = dataset.load(start_date, end_date)
 
         logger.info(
             "Loaded GMCP data: %d time steps, shape: %s",
             len(merged.time),
-            merged.precipitation_rate.shape
-            if "precipitation_rate" in merged
-            else "unknown",
+            merged["precipitation_rate"].shape,
         )
 
         return merged
