@@ -2,7 +2,7 @@
 
 **项目名称**: PhyDiff-Net 降水预报AI模型
 **开始时间**: 2026-06-15
-**最后更新**: 2026-06-15
+**最后更新**: 2026-08-12
 
 ---
 
@@ -78,6 +78,22 @@
 - [x] 配置CDS API密钥
 - [x] 接受CDS数据集许可证
 - [x] 启动ERA5数据下载（2000-2005年）
+
+### 1.8 GMCP 真实数据管道打通（2026-06 至 2026-07）
+- [x] 新增 `src/data/gmcp_reader.py`，修复真实 GMCP 文件格式 5 处不兼容（路径结构/变量名/坐标名/时间维度/查找逻辑）
+- [x] 重写 `GMCPPreprocessor.load_data()` 基于 GMCPDataset
+- [x] 完成 300 个真实 6h 窗口的探索性分析（无缺失无负值，6h 均值 0.58mm，极端事件稀少）
+- [x] GMCP reader 11 项测试通过
+- [x] 详见 `reports/analysis/gmcp_compatibility_fix_20260630.md` 与 `gmcp_analysis_20260630.md`
+
+### 1.9 GMCP-only 训练通路（2026-06 至 2026-08）
+- [x] PhyDiffNet 新增 `use_era5` 开关，支持 GMCP 单源模式
+- [x] 新增 `encoder_spatial_size` 下采样高分辨率 GMCP 避免显存爆炸
+- [x] 修复 UNet skip connection 通道拼接错配
+- [x] 新增 `src/data/gmcp_sequence_dataset.py`、`scripts/train_gmcp_only.py`、`scripts/preprocess_gmcp_6h.py`
+- [x] 新增 configs/training_gmcp_only.yaml 与 verify 配置
+- [x] GMCP 相关 28 项测试全部通过
+- [x] 全部改动 commit 并 push 至 origin/main（`70b3842`、`cea52ab`、`1a583a6`）
 
 ---
 
@@ -197,9 +213,12 @@
 - [x] 配置CDS API密钥
 - [x] 接受CDS数据集许可证
 - [x] 启动ERA5数据下载（2000-2005年）
+- [x] 打通 GMCP 真实数据管道
+- [x] 实现 GMCP-only 训练通路
+- [ ] 生成 6h 累计标签数据（运行 preprocess_gmcp_6h.py）
+- [ ] GMCP-only 端到端训练冒烟验证（verify 配置 1 epoch）
+- [ ] GMCP-only 正式小规模训练（5 epoch）
 - [ ] 监控ERA5下载进度
-- [ ] 运行数据预处理
-- [ ] 运行模型小规模测试
 
 ### 6.2 中期计划 (本月)
 - [ ] 数据预处理和验证
