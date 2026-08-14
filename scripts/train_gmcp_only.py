@@ -101,6 +101,13 @@ def parse_args() -> argparse.Namespace:
         help="Use GMCPExtremeLoss (normalized MSE + physical CSI/extreme "
         "weighting) instead of the plain MSE+MAE loss.",
     )
+    parser.add_argument(
+        "--resume",
+        type=Path,
+        default=None,
+        help="Path to a checkpoint to resume training from (restores model, "
+        "optimizer, scheduler, and epoch counter).",
+    )
     return parser.parse_args()
 
 
@@ -306,7 +313,22 @@ def main() -> None:
     checkpoint_path = output_dir / "best_model.pt"
 
     best_val_loss = float("inf")
-    for epoch in range(1, epochs + 1):
+    start_epoch = 1
+    if args.resume is not None and args.resume.exists():
+        ckpt = torch.load(args.resume, map_location=device, weights_only=False)
+        model.load_state_dict(ckpt["model_state_dict"])
+        if "optimizer_state_dict" in ckpt:
+            optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+        if "scheduler_state_dict" in ckpt:
+            scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+        start_epoch = ckpt.get("epoch", 0) + 1
+        best_val_loss = ckpt.get("val_loss", float("inf"))
+        logger.info(
+            "Resumed from %s: starting at epoch %d, best_val_loss=%.6f",
+            args.resume, start_epoch, best_val_loss,
+        )
+
+    for epoch in range(start_epoch, epochs + 1):
         logger.info("Epoch %d/%d", epoch, epochs)
         train_metrics = train_one_epoch(
             model, train_loader, criterion, optimizer, device, epoch
