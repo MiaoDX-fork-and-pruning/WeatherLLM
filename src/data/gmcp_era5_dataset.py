@@ -84,18 +84,25 @@ class GMCPERA5Dataset(Dataset):
         self.normalize = config.get("normalize", "log_minmax")
 
         self.era5 = self._load_era5()
-        self.gmcp = self._load_gmcp()
+        self._gmcp_arrays = None
+        if not self._load_gmcp_arrays():
+            # Fallback: dask-chunked xarray (slower; no .npy sidecars found).
+            self.gmcp = self._load_gmcp()
+            self._gmcp_times = self.gmcp.time.values
+            self._gmcp_hw = (
+                len(self.gmcp.latitude), len(self.gmcp.longitude)
+            )
         self._align_times()
         self._compute_gmcp_normalization_stats()
 
         logger.info(
-            "GMCPERA5Dataset: %d samples, ERA5 %dx%d x %d ch, GMCP %dx%d",
+            "GMCPERA5Dataset: %d samples, ERA5 %dx%d x %d ch, GMCP %s (%s)",
             len(self),
             self.era5_lat_count,
             self.era5_lon_count,
             ERA5_NUM_CHANNELS,
-            len(self.gmcp.latitude),
-            len(self.gmcp.longitude),
+            "x".join(str(s) for s in self._gmcp_hw),
+            "npy-mmap" if self._gmcp_arrays is not None else "xarray-dask",
         )
 
     # ------------------------------------------------------------------
@@ -212,10 +219,82 @@ class GMCPERA5Dataset(Dataset):
         ds = ds.sel(time=slice(self.start_date, self.end_date))
         return ds
 
+    def _load_gmcp_arrays(self) -> bool:
+        """Prepare fast mmap access to float16 .npy sidecar files.
+
+        When ``gmcp_6h_{year}.npy`` files exist (created by
+        ``scripts/convert_gmcp_to_npy.py``), precipitation is read through
+        ``np.load(mmap_mode='r')``: the OS page cache serves repeated
+        sliding-window reads, removing the dask chunk read amplification
+        that dominates training time on the mechanical data drive.
+
+        Returns:
+            True if the fast path was set up, False if sidecars are missing.
+        """
+        import pandas as pd
+
+        start_year = int(self.start_date[:4])
+        end_year = int(self.end_date[:4])
+        t_start = pd.Timestamp(self.start_date)
+        t_end = pd.Timestamp(self.end_date)
+
+        for year in range(start_year, end_year + 1):
+            if not (self.gmcp_path / f"gmcp_6h_{year}.npy").exists():
+                return False
+
+        arrays = []
+        times = []
+        for year in range(start_year, end_year + 1):
+            arr = np.load(self.gmcp_path / f"gmcp_6h_{year}.npy", mmap_mode="r")
+            with xr.open_dataset(
+                self.gmcp_path / f"gmcp_6h_{year}.nc"
+            ) as ds:
+                t = ds.time.values
+            mask = (t >= np.datetime64(t_start)) & (t <= np.datetime64(t_end))
+            idx = np.where(mask)[0]
+            if len(idx) == 0:
+                continue
+            # The mask is a single contiguous run (period bounds), so a
+            # slice keeps the mmap view lazy.
+            arrays.append(arr[idx[0]: idx[-1] + 1])
+            times.append(t[idx[0]: idx[-1] + 1])
+
+        if not arrays:
+            return False
+
+        self._gmcp_arrays = arrays
+        self._gmcp_times = np.concatenate(times)
+        self._gmcp_year_bounds = np.cumsum([0] + [len(a) for a in arrays])
+        self._gmcp_hw = (arrays[0].shape[1], arrays[0].shape[2])
+        return True
+
+    def _read_gmcp_range(self, start: int, end: int) -> np.ndarray:
+        """Read GMCP steps [start, end) as a float32 array [T, H, W]."""
+        if self._gmcp_arrays is not None:
+            parts = []
+            i = start
+            while i < end:
+                y = int(np.searchsorted(self._gmcp_year_bounds, i, side="right")) - 1
+                y_off = self._gmcp_year_bounds[y]
+                seg_end = min(end, self._gmcp_year_bounds[y + 1])
+                parts.append(
+                    np.asarray(
+                        self._gmcp_arrays[y][i - y_off: seg_end - y_off],
+                        dtype=np.float32,
+                    )
+                )
+                i = seg_end
+            return parts[0] if len(parts) == 1 else np.concatenate(parts, axis=0)
+        return (
+            self.gmcp["precipitation_rate"]
+            .isel(time=slice(start, end))
+            .values.astype(np.float32)
+        )
+
     def _align_times(self) -> None:
         """Intersect ERA5 and GMCP time coordinates for windowing."""
         era5_times = set(self.era5.time.values)
-        gmcp_times = self.gmcp.time.values
+        gmcp_times = self._gmcp_times
 
         usable = [
             t for t in gmcp_times
@@ -236,7 +315,6 @@ class GMCPERA5Dataset(Dataset):
                 continue
             self.indices.append((ei, gi))
 
-        self._gmcp_times = gmcp_times
         self._era5_times = self.era5.time.values
 
     # ------------------------------------------------------------------
@@ -250,9 +328,11 @@ class GMCPERA5Dataset(Dataset):
             self.input_max = None
             return
 
-        n = len(self.gmcp.time)
+        n = len(self._gmcp_times)
         sample_idx = np.linspace(0, n - 1, min(20, n), dtype=int)
-        sample = self.gmcp["precipitation_rate"].isel(time=sample_idx).values
+        sample = np.concatenate(
+            [self._read_gmcp_range(i, i + 1) for i in sample_idx]
+        )
         log_sample = np.log1p(np.nan_to_num(sample))
         self.input_min = float(np.nanmin(log_sample))
         self.input_max = float(np.nanmax(log_sample))
@@ -277,13 +357,13 @@ class GMCPERA5Dataset(Dataset):
         era5_arr = self.era5["era5_state"].isel(time=era5_idx).values.astype(np.float32)
 
         # GMCP history windows ending at the anchor: [T_in, H, W].
-        hist = self.gmcp["precipitation_rate"].isel(
-            time=slice(gmcp_idx - self.input_timesteps + 1, gmcp_idx + 1)
-        ).values.astype(np.float32)
+        hist = self._read_gmcp_range(
+            gmcp_idx - self.input_timesteps + 1, gmcp_idx + 1
+        )
         # Target windows after the anchor: [T_out, H, W].
-        tgt = self.gmcp["precipitation_rate"].isel(
-            time=slice(gmcp_idx + 1, gmcp_idx + 1 + self.forecast_horizon)
-        ).values.astype(np.float32)
+        tgt = self._read_gmcp_range(
+            gmcp_idx + 1, gmcp_idx + 1 + self.forecast_horizon
+        )
 
         hist_n = self._normalize_gmcp(hist)
         tgt_n = self._normalize_gmcp(tgt)
