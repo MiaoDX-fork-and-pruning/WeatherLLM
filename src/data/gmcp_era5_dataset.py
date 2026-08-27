@@ -103,11 +103,27 @@ class GMCPERA5Dataset(Dataset):
     # ------------------------------------------------------------------
 
     def _load_era5(self) -> xr.Dataset:
-        """Load ERA5, crop to China, and stack the 17 channels."""
-        if not self.era5_path.exists():
-            raise FileNotFoundError(f"ERA5 file not found: {self.era5_path}")
+        """Load ERA5, crop to China, and stack the 17 channels.
 
-        ds = xr.open_dataset(self.era5_path)
+        ``era5_path`` may be a single NetCDF file or a directory containing
+        yearly files named ``era5_YYYY.nc`` (they are concatenated along
+        time before cropping, so only the China-region slice is computed).
+        """
+        if not self.era5_path.exists():
+            raise FileNotFoundError(f"ERA5 path not found: {self.era5_path}")
+
+        if self.era5_path.is_dir():
+            files = sorted(self.era5_path.glob("era5_*.nc"))
+            if not files:
+                raise FileNotFoundError(
+                    f"No era5_*.nc files found in {self.era5_path}"
+                )
+            if len(files) == 1:
+                ds = xr.open_dataset(files[0])
+            else:
+                ds = xr.concat([xr.open_dataset(f) for f in files], dim="time")
+        else:
+            ds = xr.open_dataset(self.era5_path)
 
         # Crop to the China region. ERA5 latitude is ascending (-90 -> 90).
         ds = ds.sel(
