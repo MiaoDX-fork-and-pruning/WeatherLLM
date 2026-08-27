@@ -1,0 +1,81 @@
+# Dual-source (ERA5 + GMCP) PhyDiff-Net training configuration.
+# ERA5: WeatherBench2 1.5° 13-variable file (era5_2018-2019.nc), cropped to
+# the China region (24x42), 17 channels selected by GMCPERA5Dataset.
+# GMCP: preprocessed 6-hourly cumulative precipitation (0.1°, 360x620).
+#
+# Splits use the available 2018-2019 ERA5 file while the full 2000-2017
+# training data downloads in the background.
+
+model:
+  name: "PhyDiff-Net-DualSource"
+  use_era5: true
+  hidden_dim: 192
+  num_scales: 3
+  num_diffusion_steps: 1000
+  dropout_rate: 0.1
+  encoder_spatial_size: [64, 64]
+
+  encoder:
+    in_channels: 17       # 4 pressure vars x 3 levels + 5 surface vars
+    gmcp_channels: 12     # GMCP input timesteps (T_in)
+    hidden_dim: 192
+    num_heads: 8
+    num_scales: 3
+
+  diffusion:
+    hidden_dim: 192
+    num_res_blocks: 4
+    attention_resolutions: [16, 8]
+    num_diffusion_steps: 1000
+    beta_start: 0.0001
+    beta_end: 0.02
+
+  extreme_branch:
+    hidden_dim: 192
+    num_layers: 4
+    thresholds: [25.0, 50.0, 100.0]
+
+  heterogeneity:
+    hidden_dim: 192
+    num_regions: 4
+    num_frequencies: 8
+    num_heads: 8
+
+  output:
+    hidden_dim: 192
+    output_channels: 1
+    forecast_horizon: 4
+
+training:
+  batch_size: 1
+  learning_rate: 1.0e-4
+  weight_decay: 0.01
+  max_epochs: 5
+  min_lr: 1.0e-6
+  gradient_clip: 1.0
+  num_workers: 0
+  gpu_id: 0
+  seed: 42
+  output_dir: "outputs/gmcp_era5"
+  mse_weight: 1.0
+  mae_weight: 0.5
+  csi_weight: 0.5
+  extreme_weight: 1.0
+
+data:
+  era5_path: "F:/WeatherBench2_ERA5/era5_2018-2019.nc"
+  gmcp_path: "F:/GMCP_Precipitation_6h"
+  input_timesteps: 12      # 72h of GMCP history
+  forecast_horizon: 4      # 24h forecast
+  normalize: "log_minmax"  # GMCP normalization
+
+  splits:
+    train:
+      start_date: "2018-01-01"
+      end_date: "2018-12-31"
+    val:
+      start_date: "2019-01-01"
+      end_date: "2019-06-30"
+    test:
+      start_date: "2019-07-01"
+      end_date: "2019-12-31"

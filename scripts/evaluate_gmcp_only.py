@@ -105,7 +105,7 @@ def load_model(
 @torch.no_grad()
 def evaluate(
     model: PhyDiffNet,
-    test_dataset: GMCPSequenceDataset,
+    test_dataset,  # GMCPSequenceDataset or GMCPERA5Dataset
     device: torch.device,
     norm_min: Optional[float],
     norm_max: Optional[float],
@@ -128,7 +128,12 @@ def evaluate(
         inp = batch["input"].unsqueeze(0).to(device)
         target = batch["target"].to(device)  # [T, H, W] normalized
 
-        output = model(gmcp_data=inp)
+        if "era5" in batch:
+            # Dual-source mode: [C, H_era5, W_era5] -> [1, C, H_era5, W_era5]
+            era5 = batch["era5"].unsqueeze(0).to(device)
+            output = model(era5_data=era5, gmcp_data=inp)
+        else:
+            output = model(gmcp_data=inp)
         pred = output["precipitation"]  # [1, T, H, W] normalized
 
         # Denormalize to physical mm/6h if normalization is active.
@@ -181,17 +186,31 @@ def main() -> None:
 
     device = get_device(args.gpu_id)
 
-    # Build the test dataset from the config's test split.
+    # Build the test dataset from the config's test split. When an era5_path
+    # is configured, use the dual-source dataset and feed ERA5 states too.
+    use_dual_source = "era5_path" in data_config
     test_split = data_config["splits"]["test"]
-    test_base = {
-        "data_path": data_config["data_path"],
-        "input_timesteps": data_config.get("input_timesteps", 12),
-        "forecast_horizon": data_config.get("forecast_horizon", 4),
-        "normalize": data_config.get("normalize", None),
-        "use_preprocessed": data_config.get("use_preprocessed", True),
-        "region": data_config.get("region"),
-    }
-    test_dataset = GMCPSequenceDataset({**test_base, **test_split})
+    if use_dual_source:
+        from src.data.gmcp_era5_dataset import GMCPERA5Dataset
+
+        test_base = {
+            "era5_path": data_config["era5_path"],
+            "gmcp_path": data_config["gmcp_path"],
+            "input_timesteps": data_config.get("input_timesteps", 12),
+            "forecast_horizon": data_config.get("forecast_horizon", 4),
+            "normalize": data_config.get("normalize", None),
+        }
+        test_dataset = GMCPERA5Dataset({**test_base, **test_split})
+    else:
+        test_base = {
+            "data_path": data_config["data_path"],
+            "input_timesteps": data_config.get("input_timesteps", 12),
+            "forecast_horizon": data_config.get("forecast_horizon", 4),
+            "normalize": data_config.get("normalize", None),
+            "use_preprocessed": data_config.get("use_preprocessed", True),
+            "region": data_config.get("region"),
+        }
+        test_dataset = GMCPSequenceDataset({**test_base, **test_split})
 
     norm_min = getattr(test_dataset, "input_min", None)
     norm_max = getattr(test_dataset, "input_max", None)
