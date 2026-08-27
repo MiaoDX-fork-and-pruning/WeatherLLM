@@ -112,18 +112,36 @@ class GMCPERA5Dataset(Dataset):
         if not self.era5_path.exists():
             raise FileNotFoundError(f"ERA5 path not found: {self.era5_path}")
 
+        # Open with dask chunks so concatenating many yearly files stays
+        # lazy; without chunks, xr.concat materializes the full global grid
+        # (15.8 GiB for 17 years) and OOMs.
         if self.era5_path.is_dir():
             files = sorted(self.era5_path.glob("era5_*.nc"))
             if not files:
                 raise FileNotFoundError(
                     f"No era5_*.nc files found in {self.era5_path}"
                 )
-            if len(files) == 1:
-                ds = xr.open_dataset(files[0])
-            else:
-                ds = xr.concat([xr.open_dataset(f) for f in files], dim="time")
+            parts = []
+            for f in files:
+                d = xr.open_dataset(f, chunks={"time": 1464})
+                d = d.sel(
+                    latitude=slice(
+                        CHINA_REGION["lat_min"], CHINA_REGION["lat_max"]
+                    ),
+                    longitude=slice(
+                        CHINA_REGION["lon_min"], CHINA_REGION["lon_max"]
+                    ),
+                )
+                d = d.sel(time=slice(self.start_date, self.end_date))
+                if d.sizes.get("time", 0) > 0:
+                    parts.append(d)
+            if not parts:
+                raise ValueError(
+                    f"No ERA5 times in range {self.start_date}..{self.end_date}"
+                )
+            ds = xr.concat(parts, dim="time") if len(parts) > 1 else parts[0]
         else:
-            ds = xr.open_dataset(self.era5_path)
+            ds = xr.open_dataset(self.era5_path, chunks={"time": 1464})
 
         # Crop to the China region. ERA5 latitude is ascending (-90 -> 90).
         ds = ds.sel(
@@ -166,7 +184,13 @@ class GMCPERA5Dataset(Dataset):
         return arr.to_dataset(name="era5_state")
 
     def _load_gmcp(self) -> xr.Dataset:
-        """Load preprocessed GMCP 6h files for the period."""
+        """Load preprocessed GMCP 6h files for the period.
+
+        Files are opened with dask chunks (24 time steps per chunk) so that
+        concatenating many years stays lazy and each __getitem__ reads only
+        the chunks it needs, instead of materializing the full period
+        (~22 GiB for 17 years) in memory.
+        """
         start_year = int(self.start_date[:4])
         end_year = int(self.end_date[:4])
 
@@ -181,10 +205,10 @@ class GMCPERA5Dataset(Dataset):
                 f"for {self.start_date}..{self.end_date}"
             )
 
-        if len(files) == 1:
-            ds = xr.open_dataset(files[0])
-        else:
-            ds = xr.concat([xr.open_dataset(f) for f in files], dim="time")
+        parts = [
+            xr.open_dataset(f, chunks={"time": 24}) for f in files
+        ]
+        ds = xr.concat(parts, dim="time") if len(parts) > 1 else parts[0]
         ds = ds.sel(time=slice(self.start_date, self.end_date))
         return ds
 
